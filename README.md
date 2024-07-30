@@ -99,7 +99,7 @@ extension A {
 }
 ```
 
-## Known issues
+## Known issues
 
 - Swift is still buggy when it comes to macros
     - i.e. `WrapWithCombine` works in Xcode 16b4 but not on Xcode 15.
