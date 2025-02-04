@@ -36,6 +36,7 @@ To trigger it, annotate a protocol with `@WrapWithCombine`, i.e.:
 @WrapWithCombine
 protocol A {
     func test() async throws -> String
+    func test2() async throws(SomeError) -> String
 }
 
 // ...will expand to...
@@ -60,36 +61,15 @@ extension A {
         }
         .eraseToAnyPublisher()
     }
-}
-```
-
-To refine the error type, use the `@WrapWithCombine(error:)` alternative, i.e:
-
-```swift
-@WrapWithCombine(error: SomeError.self)
-protocol A {
-    func test() async throws -> String
-}
-
-// ...will expand to...
-
-@WrapWithCombine(error: SomeError.self)
-protocol A {
-    func test() async throws -> String
-}
-
-extension A {
-    func test() -> AnyPublisher<String, SomeError> {
+    func test2() -> AnyPublisher<String, SomeError> {
         Deferred {
             Future { promise in
                 Task {
-                    do {
+                    do throws(SomeError) {
                         let result: String = try await test()
                         promise(.success(result))
-                    } catch let error as SomeError {
-                        promise(.failure(error))
                     } catch {
-                        fatalError("Unkown error propagated: \(String(describing: type(of: error)))")
+                        promise(.failure(error))
                     }
                 }
             }
@@ -99,10 +79,11 @@ extension A {
 }
 ```
 
+
 ## Known issues
 
 - Swift is still buggy when it comes to macros
-    - i.e. `WrapWithCombine` works in Xcode 16b4 but not on Xcode 15.
+    - i.e. `WrapWithCombine` works in Xcode 16.x but not on Xcode 15.x.
 - SwiftSyntax has to be compiled when adopting this package, compilation times are going to increase because of this
 
 ## Contributing

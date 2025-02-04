@@ -27,15 +27,6 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
             )
         }
 
-        let errorOverride = node.arguments?
-            .as(LabeledExprListSyntax.self)?
-            .first?
-            .as(LabeledExprSyntax.self)?
-            .expression
-            .as(MemberAccessExprSyntax.self)?
-            .base?
-            .trimmedDescription
-
         let methods = try protocolDecl
             .methods
             .map { function -> FunctionDeclSyntax in
@@ -45,16 +36,16 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
                 if function.isAsync && function.throws {
                     generatedFunction = try FunctionDeclSyntax(
                         """
-                        \(raw: Self.funcFullSignature(for: function, errorOverride: errorOverride)) {
+                        \(raw: Self.funcFullSignature(for: function)) {
                             Deferred {
                                 Future { promise in
                                     Task {
-                                        do {
+                                        do \(function.throwType.map { "throws(\($0)) " } ?? ""){
                                             let result: \(raw: function.returnTypeString) = try await \(raw: function.name)(\(raw: function.parametersInvokeForwardString))
                                             promise(.success(result))
-                                        } catch\(raw: extraCatchCodegen(for: errorOverride)) {
+                                        } catch {
                                             promise(.failure(error))
-                                        } \(raw: extraGenericCatchCodegen(for: errorOverride))
+                                        }
                                     }
                                 }
                             }
@@ -65,7 +56,7 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
                 } else if function.isAsync {
                     generatedFunction =  try FunctionDeclSyntax(
                         """
-                        \(raw: Self.funcFullSignature(for: function, errorOverride: errorOverride)) {
+                        \(raw: Self.funcFullSignature(for: function)) {
                             Deferred {
                                 Future { promise in
                                     Task {
@@ -81,15 +72,15 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
                 } else if function.throws {
                     generatedFunction =  try FunctionDeclSyntax(
                         """
-                        \(raw: Self.funcFullSignature(for: function, errorOverride: errorOverride)) {
+                        \(raw: Self.funcFullSignature(for: function)) {
                             Deferred {
                                 Future { promise in
-                                    do {
+                                    do \(function.throwType.map { "throws(\($0)) " } ?? ""){
                                         let result: \(raw: function.returnTypeString) = try \(raw: function.name)(\(raw: function.parametersInvokeForwardString))
                                         promise(.success(result))
-                                    } catch\(raw: extraCatchCodegen(for: errorOverride)) {
+                                    } catch {
                                         promise(.failure(error))
-                                    } \(raw: extraGenericCatchCodegen(for: errorOverride))
+                                    }
                                 }
                             }
                             .eraseToAnyPublisher()
@@ -98,7 +89,7 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
                     )
                 } else {
                     generatedFunction = try FunctionDeclSyntax("""
-                        \(raw: Self.funcFullSignature(for: function, errorOverride: errorOverride)) {
+                        \(raw: Self.funcFullSignature(for: function)) {
                             Deferred {
                                 Future { promise in
                                     let result: \(raw: function.returnTypeString) = \(raw: function.name)(\(raw: function.parametersInvokeForwardString))
@@ -128,39 +119,18 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
     }
 
     private static func funcFullSignature(
-        for function: FunctionDeclSyntax,
-        errorOverride: String?
+        for function: FunctionDeclSyntax
     ) -> String {
         "func \(function.name)\(function.genericsClauseString)\(function.parametersString)" +
-        "-> \(returnPublisherString(for: function, errorOverride: errorOverride))\(function.genericsWhereClauseString)"
+        "-> \(returnPublisherString(for: function))\(function.genericsWhereClauseString)"
     }
 
-    private static func returnPublisherString(for function: FunctionDeclSyntax, errorOverride: String?) -> String {
-        "AnyPublisher<\(function.returnTypeString), \(errorString(for: function, errorOverride: errorOverride))>"
+    private static func returnPublisherString(for function: FunctionDeclSyntax) -> String {
+        "AnyPublisher<\(function.returnTypeString), \(errorString(for: function))>"
     }
 
-    private static func errorString(for function: FunctionDeclSyntax, errorOverride: String?) -> String {
-        if let errorOverride {
-            return function.throws ? errorOverride : "Never"
-        } else {
-            return function.throws ? "any Error" : "Never"
-        }
-    }
-
-    private static func extraCatchCodegen(for errorOverride: String?) -> String {
-        if let errorOverride {
-            return " let error as \(errorOverride)"
-        } else {
-            return ""
-        }
-    }
-
-    private static func extraGenericCatchCodegen(for errorOverride: String?) -> String {
-        if errorOverride != nil {
-            "catch { fatalError(\"Unknown error propagated: \\(String(describing: type(of: error)))\") }"
-        } else {
-            ""
-        }
+    private static func errorString(for function: FunctionDeclSyntax) -> String {
+        return function.throws ? (function.throwType ?? "any Error") : "Never"
     }
 
 }

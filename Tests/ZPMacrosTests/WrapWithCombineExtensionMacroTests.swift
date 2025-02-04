@@ -179,6 +179,44 @@ final class WrapWithCombineExtensionMacroTests: XCTestCase {
         #endif
     }
 
+    func testTypedThrowingFunction() throws {
+        #if canImport(ZPMacrosMacros)
+        assertMacroExpansion(
+            """
+            @WrapWithCombine
+            protocol A {
+                func test() throws(SomeError) -> (a: Int, b: Double)
+            }
+            """,
+            expandedSource:
+            """
+            protocol A {
+                func test() throws(SomeError) -> (a: Int, b: Double)
+            }
+
+            extension A {
+                func test() -> AnyPublisher<(a: Int, b: Double), SomeError> {
+                    Deferred {
+                        Future { promise in
+                            do throws(SomeError) {
+                                let result: (a: Int, b: Double) = try test()
+                                promise(.success(result))
+                            } catch {
+                                promise(.failure(error))
+                            }
+                        }
+                    }
+                    .eraseToAnyPublisher()
+                }
+            }
+            """,
+            macros: testMacros
+        )
+        #else
+        throw XCTSkip("macros are only supported when running tests for the host platform")
+        #endif
+    }
+
     func testAsyncFunction() throws {
         #if canImport(ZPMacrosMacros)
         assertMacroExpansion(
@@ -236,6 +274,46 @@ final class WrapWithCombineExtensionMacroTests: XCTestCase {
                         Future { promise in
                             Task {
                                 do {
+                                    let result: String = try await test()
+                                    promise(.success(result))
+                                } catch {
+                                    promise(.failure(error))
+                                }
+                            }
+                        }
+                    }
+                    .eraseToAnyPublisher()
+                }
+            }
+            """,
+            macros: testMacros
+        )
+        #else
+        throw XCTSkip("macros are only supported when running tests for the host platform")
+        #endif
+    }
+
+    func testAsyncThrowingTypedErrorFunction() throws {
+        #if canImport(ZPMacrosMacros)
+        assertMacroExpansion(
+            """
+            @WrapWithCombine
+            protocol A {
+                func test() async throws(AnotherError) -> String
+            }
+            """,
+            expandedSource:
+            """
+            protocol A {
+                func test() async throws(AnotherError) -> String
+            }
+
+            extension A {
+                func test() -> AnyPublisher<String, AnotherError> {
+                    Deferred {
+                        Future { promise in
+                            Task {
+                                do throws(AnotherError) {
                                     let result: String = try await test()
                                     promise(.success(result))
                                 } catch {
@@ -333,63 +411,5 @@ final class WrapWithCombineExtensionMacroTests: XCTestCase {
         #endif
     }
 
-    func testErrorOverride() throws {
-        #if canImport(ZPMacrosMacros)
-        assertMacroExpansion(
-            """
-            @WrapWithCombine(error: SomeError.self)
-            protocol A {
-                func a() throws
-                func b() async throws
-            }
-            """,
-            expandedSource:
-            """
-            protocol A {
-                func a() throws
-                func b() async throws
-            }
-
-            extension A {
-                func a() -> AnyPublisher<Void, SomeError> {
-                    Deferred {
-                        Future { promise in
-                            do {
-                                let result: Void = try a()
-                                promise(.success(result))
-                            } catch let error as SomeError {
-                                promise(.failure(error))
-                            } catch {
-                                fatalError("Unknown error propagated: \\(String(describing: type(of: error)))")
-                            }
-                        }
-                    }
-                    .eraseToAnyPublisher()
-                }
-                func b() -> AnyPublisher<Void, SomeError> {
-                    Deferred {
-                        Future { promise in
-                            Task {
-                                do {
-                                    let result: Void = try await b()
-                                    promise(.success(result))
-                                } catch let error as SomeError {
-                                    promise(.failure(error))
-                                } catch {
-                                    fatalError("Unknown error propagated: \\(String(describing: type(of: error)))")
-                                }
-                            }
-                        }
-                    }
-                    .eraseToAnyPublisher()
-                }
-            }
-            """,
-            macros: testMacros
-        )
-        #else
-        throw XCTSkip("macros are only supported when running tests for the host platform")
-        #endif
-    }
 
 }

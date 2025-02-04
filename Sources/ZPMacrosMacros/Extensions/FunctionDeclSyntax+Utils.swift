@@ -7,8 +7,13 @@ extension FunctionDeclSyntax {
     }
 
     var `throws`: Bool {
-        signature.effectSpecifiers?.throwsSpecifier != nil
+        signature.effectSpecifiers?.throwsClause?.throwsSpecifier != nil
     }
+
+    var throwType: String? {
+        signature.effectSpecifiers?.throwsClause?.type?.trimmedDescription
+    }
+
 
     var parametersString: String {
         signature.parameterClause.trimmedDescription
