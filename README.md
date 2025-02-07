@@ -25,33 +25,53 @@ dependencies: [
 
 ### WrapWithCombine
 
-This macros generates a protocol extension, where all
-methods are wrapped for Combine (`Deferred` and `Future`).
+This macro generates a protocol extension where all methods are wrapped in Combine publishers (`Deferred` and `Future`).
 
-This supports generics, `async` and `throws`.
+#### Features
 
-To trigger it, annotate a protocol with `@WrapWithCombine`, i.e.:
+- Preserves access levels (public, internal)
+- Supports async/sync methods
+- Supports throwing/non-throwing methods
+- Supports Swift 6 typed throws with single and compound error types
+- Handles complex return types (tuples, optionals, collections)
+- Preserves generic constraints and where clauses
+- Handles complex parameter labels and unnamed parameters
+- Supports multiple methods in a single protocol
+
+To use it, annotate a protocol with `@WrapWithCombine`:
 
 ```swift
 @WrapWithCombine
-protocol A {
-    func test() async throws -> String
-    func test2() async throws(SomeError) -> String
+public protocol NetworkService {
+    // Simple async throwing method
+    func fetch(_ url: URL) async throws -> Data
+    
+    // Method with complex return type and typed throws
+    func fetchItems() throws(NetworkError) -> (items: [Item], metadata: Metadata?)
+    
+    // Generic method with constraints
+    func process<T: Codable>(data: Data) throws -> T where T: Sendable
+    
+    // Method with complex parameter labels
+    func configure(with config: Config, _ timeout: TimeInterval, using mode: Mode)
 }
 
 // ...will expand to...
 
-protocol A {
-    func test() async throws -> String
+public protocol NetworkService {
+    func fetch(_ url: URL) async throws -> Data
+    func fetchItems() throws(NetworkError) -> (items: [Item], metadata: Metadata?)
+    func process<T: Codable>(data: Data) throws -> T where T: Sendable
+    func configure(with config: Config, _ timeout: TimeInterval, using mode: Mode)
 }
 
-extension A {
-    func test() -> AnyPublisher<String, any Error> {
+extension NetworkService {
+    public func fetch(_ url: URL) -> AnyPublisher<Data, any Error> {
         Deferred {
             Future { promise in
                 Task {
                     do {
-                        let result: String = try await test()
+                        let result: Data = try await fetch(url)
                         promise(.success(result))
                     } catch {
                         promise(.failure(error))
@@ -61,17 +81,40 @@ extension A {
         }
         .eraseToAnyPublisher()
     }
-    func test2() -> AnyPublisher<String, SomeError> {
+    
+    public func fetchItems() -> AnyPublisher<(items: [Item], metadata: Metadata?), NetworkError> {
         Deferred {
             Future { promise in
-                Task {
-                    do throws(SomeError) {
-                        let result: String = try await test()
-                        promise(.success(result))
-                    } catch {
-                        promise(.failure(error))
-                    }
+                do throws(NetworkError) {
+                    let result = try fetchItems()
+                    promise(.success(result))
+                } catch {
+                    promise(.failure(error))
                 }
+            }
+        }
+        .eraseToAnyPublisher()
+    }
+    
+    public func process<T: Codable>(data: Data) -> AnyPublisher<T, any Error> where T: Sendable {
+        Deferred {
+            Future { promise in
+                do {
+                    let result: T = try process(data: data)
+                    promise(.success(result))
+                } catch {
+                    promise(.failure(error))
+                }
+            }
+        }
+        .eraseToAnyPublisher()
+    }
+    
+    public func configure(with config: Config, _ timeout: TimeInterval, using mode: Mode) -> AnyPublisher<Void, Never> {
+        Deferred {
+            Future { promise in
+                let result: Void = configure(with: config, timeout, using: mode)
+                promise(.success(result))
             }
         }
         .eraseToAnyPublisher()
@@ -79,12 +122,10 @@ extension A {
 }
 ```
 
-
 ## Known issues
 
-- Swift is still buggy when it comes to macros
-    - i.e. `WrapWithCombine` works in Xcode 16.x but not on Xcode 15.x.
-- SwiftSyntax has to be compiled when adopting this package, compilation times are going to increase because of this
+- Swift macros require Xcode 16.0+ andSwift 6.0+ to correctly work.
+- SwiftSyntax has to be compiled when adopting this package, which may increase initial compilation times
 
 ## Contributing
 

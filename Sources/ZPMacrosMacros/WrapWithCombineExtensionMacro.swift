@@ -31,12 +31,13 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
             .methods
             .map { function -> FunctionDeclSyntax in
 
-                let generatedFunction: FunctionDeclSyntax
+                let accessLevel = protocolDecl.accessLevel
+                let accessLevelPrefix = accessLevel.isEmpty ? "" : "\(accessLevel) "
 
                 if function.isAsync && function.throws {
-                    generatedFunction = try FunctionDeclSyntax(
+                    return try FunctionDeclSyntax(
                         """
-                        \(raw: Self.funcFullSignature(for: function)) {
+                        \(raw: accessLevelPrefix)func \(raw: function.name)\(raw: function.genericsClauseString)\(raw: function.parametersString) -> \(raw: returnPublisherString(for: function))\(raw: function.genericsWhereClauseString) {
                             Deferred {
                                 Future { promise in
                                     Task {
@@ -54,9 +55,9 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
                         """
                     )
                 } else if function.isAsync {
-                    generatedFunction =  try FunctionDeclSyntax(
+                    return try FunctionDeclSyntax(
                         """
-                        \(raw: Self.funcFullSignature(for: function)) {
+                        \(raw: accessLevelPrefix)func \(raw: function.name)\(raw: function.genericsClauseString)\(raw: function.parametersString) -> \(raw: returnPublisherString(for: function))\(raw: function.genericsWhereClauseString) {
                             Deferred {
                                 Future { promise in
                                     Task {
@@ -70,9 +71,9 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
                         """
                     )
                 } else if function.throws {
-                    generatedFunction =  try FunctionDeclSyntax(
+                    return try FunctionDeclSyntax(
                         """
-                        \(raw: Self.funcFullSignature(for: function)) {
+                        \(raw: accessLevelPrefix)func \(raw: function.name)\(raw: function.genericsClauseString)\(raw: function.parametersString) -> \(raw: returnPublisherString(for: function))\(raw: function.genericsWhereClauseString) {
                             Deferred {
                                 Future { promise in
                                     do \(function.throwType.map { "throws(\($0)) " } ?? ""){
@@ -88,8 +89,9 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
                         """
                     )
                 } else {
-                    generatedFunction = try FunctionDeclSyntax("""
-                        \(raw: Self.funcFullSignature(for: function)) {
+                    return try FunctionDeclSyntax(
+                        """
+                        \(raw: accessLevelPrefix)func \(raw: function.name)\(raw: function.genericsClauseString)\(raw: function.parametersString) -> \(raw: returnPublisherString(for: function))\(raw: function.genericsWhereClauseString) {
                             Deferred {
                                 Future { promise in
                                     let result: \(raw: function.returnTypeString) = \(raw: function.name)(\(raw: function.parametersInvokeForwardString))
@@ -101,9 +103,6 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
                         """
                     )
                 }
-
-                return generatedFunction
-
             }
 
         guard !methods.isEmpty else { return [] }
@@ -115,14 +114,6 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
         }
 
         return [extensionDecl]
-
-    }
-
-    private static func funcFullSignature(
-        for function: FunctionDeclSyntax
-    ) -> String {
-        "func \(function.name)\(function.genericsClauseString)\(function.parametersString)" +
-        "-> \(returnPublisherString(for: function))\(function.genericsWhereClauseString)"
     }
 
     private static func returnPublisherString(for function: FunctionDeclSyntax) -> String {
@@ -132,5 +123,4 @@ public struct WrapWithCombineExtensionMacro: ExtensionMacro {
     private static func errorString(for function: FunctionDeclSyntax) -> String {
         return function.throws ? (function.throwType ?? "any Error") : "Never"
     }
-
 }
